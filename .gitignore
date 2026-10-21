@@ -1,0 +1,5 @@
+fonts/
+tex/
+out*/
+*.b64
+_asm/

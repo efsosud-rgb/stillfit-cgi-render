@@ -1,0 +1,82 @@
+name: render-interior
+on:
+  workflow_dispatch:
+    inputs:
+      spp:
+        description: amostras por pixel
+        default: "20"
+      nchunks:
+        description: jobs em paralelo (igual ao tamanho da matriz)
+        default: "20"
+      resx:
+        default: "1280"
+      resy:
+        default: "720"
+
+jobs:
+  render:
+    runs-on: ubuntu-latest
+    timeout-minutes: 150
+    strategy:
+      fail-fast: false
+      matrix:
+        chunk: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: libs do sistema para o Blender headless
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq libxi6 libxxf86vm1 libxfixes3 libxrender1 libgl1 libxkbcommon0 libsm6 libegl1 libglu1-mesa > /dev/null
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: pip-bpy-5.2.2-${{ runner.os }}
+      - name: instalar bpy
+        run: pip install --quiet bpy==5.2.2 numpy pillow fonttools brotli
+      - name: logo, fontes e texturas
+        run: |
+          mkdir -p logos
+          curl -sSL -o logos/stillfit_badge.png "https://cdn.creativeclaw.co/u/011c9a0b/images/d51c7ca7-ecfd-43c1-b1cb-107b74a9e62f.png"
+          python -c "from PIL import Image; im=Image.open('logos/stillfit_badge.png'); print(im.size, im.mode)"
+          python get_fonts.py
+          python make_tex.py
+      - name: render
+        run: |
+          python scene.py --chunk ${{ matrix.chunk }} --nchunks ${{ github.event.inputs.nchunks }} --res ${{ github.event.inputs.resx }} ${{ github.event.inputs.resy }} --spp ${{ github.event.inputs.spp }} --out out 2>&1 | grep -E "FRAME|DONE|Error|Traceback|SCENE_READY"
+          ls out | wc -l
+      - uses: actions/upload-artifact@v4
+        with:
+          name: frames-${{ matrix.chunk }}
+          path: out/*.png
+          compression-level: 0
+          retention-days: 7
+
+  encode:
+    needs: render
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - run: sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg > /dev/null
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: frames-*
+          path: frames
+          merge-multiple: true
+      - name: codificar
+        run: |
+          ls frames | wc -l
+          mkdir -p final
+          ffmpeg -v error -framerate 24 -i frames/f_%04d.png -c:v libx264 -preset slow -crf 15 -pix_fmt yuv420p -movflags +faststart final/StillFit_Xerem_CGI_interior_16s.mp4
+          cp frames/f_0001.png final/still_01_entrada.png
+          cp frames/f_0186.png final/still_02_recepcao.png
+          cp frames/f_0384.png final/still_03_lounge.png
+          ls -la final
+      - uses: actions/upload-artifact@v4
+        with:
+          name: interior-final
+          path: final/*
+          compression-level: 0
+          retention-days: 14
