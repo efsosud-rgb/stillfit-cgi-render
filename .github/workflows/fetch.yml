@@ -5,6 +5,9 @@ on:
       urls:
         description: URLs públicas (separadas por espaço) para baixar e gravar no branch assets
         required: true
+      prefix:
+        description: prefixo dos nomes de arquivo
+        default: asset
 
 permissions:
   contents: write
@@ -13,22 +16,35 @@ jobs:
   fetch:
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    env:
+      URLS: ${{ github.event.inputs.urls }}
+      PREFIX: ${{ github.event.inputs.prefix }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: assets
       - name: baixar
         run: |
           mkdir -p assets
-          for u in ${{ github.event.inputs.urls }}; do
-            n=$(basename "${u%%\?*}")
-            curl -sSL --retry 3 -o "assets/$n" "$u"
-            ls -la "assets/$n"
+          read -ra arr <<< "$URLS"
+          i=0
+          for u in "${arr[@]}"; do
+            i=$((i+1))
+            tmp="assets/${PREFIX}_${i}.bin"
+            ct=$(curl -sSL --retry 3 -o "$tmp" -w '%{content_type}' "$u" || echo "falhou")
+            echo "[$i] $ct $(stat -c %s "$tmp" 2>/dev/null) bytes"
+            case "$ct" in
+              video/mp4*) mv "$tmp" "assets/${PREFIX}_${i}.mp4";;
+              image/jpeg*) mv "$tmp" "assets/${PREFIX}_${i}.jpg";;
+              image/png*) mv "$tmp" "assets/${PREFIX}_${i}.png";;
+              *) head -c 300 "$tmp"; echo;;
+            esac
           done
+          ls -la assets
       - name: publicar no branch assets
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git checkout --orphan assets
-          git rm -rfq --cached . || true
           git add -f assets
-          git commit -qm "assets baixados"
-          git push -f origin assets
+          git commit -qm "assets: ${PREFIX}" || echo "nada novo"
+          git push origin HEAD:assets
