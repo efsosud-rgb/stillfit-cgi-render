@@ -1,0 +1,34 @@
+name: fetch-assets
+on:
+  workflow_dispatch:
+    inputs:
+      urls:
+        description: URLs públicas (separadas por espaço) para baixar e gravar no branch assets
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: baixar
+        run: |
+          mkdir -p assets
+          for u in ${{ github.event.inputs.urls }}; do
+            n=$(basename "${u%%\?*}")
+            curl -sSL --retry 3 -o "assets/$n" "$u"
+            ls -la "assets/$n"
+          done
+      - name: publicar no branch assets
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git checkout --orphan assets
+          git rm -rfq --cached . || true
+          git add -f assets
+          git commit -qm "assets baixados"
+          git push -f origin assets
