@@ -1,0 +1,43 @@
+name: publish-output
+on:
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: id do run de render-interior cujos quadros serão usados
+        required: true
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg > /dev/null
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: frames-*
+          path: frames
+          merge-multiple: true
+          run-id: ${{ github.event.inputs.run_id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: codificar e publicar no branch output
+        run: |
+          N=$(ls frames | wc -l); echo "quadros: $N"
+          mkdir -p final
+          ffmpeg -v error -framerate 24 -i frames/f_%04d.png -c:v libx264 -preset slow -crf 15 -pix_fmt yuv420p -movflags +faststart final/interior_1280x720.mp4
+          cp frames/f_0001.png final/still_01_entrada.png
+          cp frames/f_0186.png final/still_02_recepcao.png
+          cp frames/f_0384.png final/still_03_lounge.png
+          tar -cf - frames | zstd -19 -T0 -o final/frames_png.tar.zst || true
+          ls -la final
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git checkout --orphan output
+          git rm -rfq --cached . || true
+          git add -f final/interior_1280x720.mp4 final/still_01_entrada.png final/still_02_recepcao.png final/still_03_lounge.png
+          git commit -qm "output do run ${{ github.event.inputs.run_id }} ($N quadros)"
+          git push -f origin output
