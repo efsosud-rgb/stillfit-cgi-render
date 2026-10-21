@@ -38,8 +38,6 @@ jobs:
         run: pip install --quiet bpy==5.2.2 numpy pillow fonttools brotli
       - name: logo, fontes e texturas
         run: |
-          mkdir -p logos
-          curl -sSL -o logos/stillfit_badge.png "https://cdn.creativeclaw.co/u/011c9a0b/images/d51c7ca7-ecfd-43c1-b1cb-107b74a9e62f.png"
           python -c "from PIL import Image; im=Image.open('logos/stillfit_badge.png'); print(im.size, im.mode)"
           python get_fonts.py
           python make_tex.py
