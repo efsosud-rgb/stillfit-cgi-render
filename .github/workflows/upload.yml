@@ -1,0 +1,39 @@
+name: upload-assets
+on:
+  workflow_dispatch:
+    inputs:
+      files:
+        description: caminhos no branch assets (separados por espaço)
+        required: true
+      urls:
+        description: URLs de envio (PUT pré-assinado), na mesma ordem
+        required: true
+      types:
+        description: content-types, na mesma ordem
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  upload:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      FILES: ${{ github.event.inputs.files }}
+      URLS: ${{ github.event.inputs.urls }}
+      TYPES: ${{ github.event.inputs.types }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: assets
+      - name: enviar
+        run: |
+          read -ra files <<< "$FILES"
+          read -ra urls <<< "$URLS"
+          read -ra types <<< "$TYPES"
+          for i in "${!files[@]}"; do
+            f="${files[$i]}"; u="${urls[$i]}"; t="${types[$i]}"
+            code=$(curl -sS -o /dev/null -w '%{http_code}' -X PUT -H "Content-Type: $t" -T "$f" "$u" || echo "falhou")
+            echo "[$i] $f ($(stat -c %s "$f") bytes, $t) -> HTTP $code"
+          done
